@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>水蘊草 AR 自然實驗室</title>
+<!-- 請把以下網址替換為自己發布的 GAS /exec 網址 -->
+<script>
+const GAS_URL = '請貼上你的GAS網頁應用程式exec網址';
+const SETTINGS = {
+  MODEL_URL: './plant.glb',
+  TARGET_URL: './targets.mind',
+  // 模型自動縮放到圖卡上方；需要可在這裡微調。
+  MAX_MODEL_WIDTH: 0.78,
+  MAX_MODEL_HEIGHT: 0.68,
+  MAX_MODEL_DEPTH: 0.54,
+  WATER_WIDTH_RATIO: 0.82,
+  WATER_DEPTH_RATIO: 0.82,
+  WATER_HEIGHT_RATIO: 0.92,
+  // 若 GLB 已包含水體，程式會嘗試隱藏常見水體名稱的物件。
+  HIDE_EMBEDDED_WATER: true
+};
+</script>
+<script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+<style>
+:root{--blue:#086b87;--green:#137b65;--ink:#163747;--light:#edf8f8;--line:#d5e6e8}
+*{box-sizing:border-box}html,body{margin:0;font-family:system-ui,-apple-system,"Noto Sans TC",sans-serif;color:var(--ink);background:#e8f3f4}
+button,input,textarea{font:inherit}button{cursor:pointer}
+header{position:relative;z-index:20;background:#ffffffed;display:flex;align-items:center;justify-content:space-between;padding:11px 15px;box-shadow:0 2px 12px #173b4820;gap:10px}
+header strong{font-size:17px}header small{display:block;color:#66808a;font-size:12px}
+.tabs{display:flex;gap:6px}.tab{padding:10px 13px;background:#eaf4f5;border:1px solid var(--line);border-radius:10px;font-weight:700;color:#286375}.tab.active{background:var(--blue);color:white}
+main{height:calc(100dvh - 65px);position:relative;overflow:hidden}
+#arArea{position:absolute;inset:0;background:linear-gradient(#daeef0,#afdad8)}
+a-scene{position:absolute!important;inset:0!important;width:100%!important;height:100%!important}
+#arPrompt{position:absolute;z-index:12;top:12px;left:12px;right:12px;text-align:center;background:#ffffffee;border-radius:14px;padding:13px;box-shadow:0 3px 10px #0002}
+#arPrompt h2{font-size:17px;margin:2px 0 5px}#arPrompt p{font-size:13px;margin:0 0 10px;line-height:1.6}
+#status{position:absolute;top:12px;left:12px;right:12px;z-index:9;text-align:center;border-radius:10px;background:#173747da;color:white;padding:9px;font-size:13px}
+#controls{position:absolute;bottom:calc(16px + env(safe-area-inset-bottom));left:12px;right:12px;z-index:9;background:#fffffff5;box-shadow:0 3px 18px #0003;border-radius:18px;padding:15px}
+#controls label{display:flex;align-items:center;justify-content:space-between;font-weight:700}#level{width:100%;accent-color:var(--blue);margin:12px 0}
+.levelButtons{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}button.primary,.levelButtons button,.saveObserve,.submit{background:var(--blue);color:white;border:0;border-radius:11px;padding:11px 12px;font-weight:700}
+.levelButtons button{background:#d9ecf0;color:#16516a}.levelButtons button.selected{background:var(--blue);color:#fff}
+.helper{color:#647d87;font-size:12px;line-height:1.6;margin:10px 0 0}.inline{display:flex;gap:8px;align-items:center;justify-content:space-between}.saveObserve{background:var(--green);margin-top:10px;width:100%}
+#worksheet{position:absolute;inset:0;z-index:13;overflow:auto;background:#f2f8f9;padding:16px 14px 35px;display:none}
+#worksheet.visible{display:block}.sheet{max-width:730px;margin:auto}.section{background:white;border:1px solid var(--line);border-radius:16px;padding:17px;margin-bottom:12px;box-shadow:0 2px 8px #133f4c0a}
+h1{font-size:21px;margin:0 0 10px}h2{font-size:16px;margin:0 0 12px}.section p,.section li{font-size:14px;line-height:1.75}.section ol{padding-left:24px}
+.field{display:block;font-size:14px;font-weight:700;margin:12px 0 4px}.field span{color:#b63a36}
+input[type=text],textarea{width:100%;border:1px solid #bccfd5;border-radius:9px;padding:11px;background:#fbfefe;color:#163747}
+textarea{min-height:72px;resize:vertical}input:focus,textarea:focus{outline:2px solid #57afbd}
+.choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.choices label{background:#f1f8f7;border:1px solid #d7e8e5;border-radius:10px;padding:12px;font-weight:600;font-size:14px}
+.saved{font-size:13px;line-height:1.7;padding:10px;border-radius:9px;background:#e5f6ef;color:#176349}.submit{width:100%;font-size:16px;padding:15px;margin-top:10px;background:var(--green)}.submit:disabled{opacity:.55}
+#result{font-weight:700;font-size:14px;line-height:1.6;margin-top:10px}.danger{color:#ae3434}.ok{color:#157953}
+@media(min-width:700px){header{padding:13px 25px}#controls{max-width:450px;margin:auto}#arPrompt{max-width:470px;margin:auto}#status{max-width:420px;margin:auto}}
+</style>
+</head>
+<body>
+<header>
+  <div><strong>🌿 水蘊草 AR 自然實驗室</strong><small>調整水位 × 比較莖葉 × 探究生長類型</small></div>
+  <nav class="tabs" aria-label="功能切換">
+    <button id="viewAR" class="tab active" type="button">AR 觀察</button>
+    <button id="viewSheet" class="tab" type="button">學習單</button>
+  </nav>
+</header>
+<main>
+<section id="arArea" aria-label="AR 相機觀察區">
+  <div id="arPrompt">
+    <h2>準備觀察水蘊草了嗎？</h2>
+    <p>準備專屬 AR 圖卡，按下按鈕允許相機權限，再讓鏡頭對準圖卡。</p>
+    <button class="primary" id="startAR" type="button">啟動 AR 相機</button>
+    <p id="startError" class="danger" role="alert"></p>
+  </div>
+  <div id="status" hidden>尚未辨識圖卡</div>
+  <a-scene id="scene" mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiLoading: yes; uiScanning: no; uiError: yes" embedded color-space="sRGB" renderer="colorManagement: true; antialias: true" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false" loading-screen="enabled: false">
+    <a-assets timeout="45000">
+      <a-asset-item id="plantAsset" src="./plant.glb"></a-asset-item>
+    </a-assets>
+    <a-light type="ambient" intensity="1.3"></a-light>
+    <a-light type="directional" intensity="0.9" position="-1 2 3"></a-light>
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+    <a-entity id="target" mindar-image-target="targetIndex: 0">
+      <a-entity id="upright" rotation="90 0 0" position="0 0 0.04">
+        <a-entity id="plantModel" gltf-model="#plantAsset"></a-entity>
+        <a-box id="waterBox" width="0.5" height="0.15" depth="0.4" position="0 0.075 0" material="color: #69cde5; transparent: true; opacity: 0.28; side: double; depthWrite: false; roughness: 0.18"></a-box>
+      </a-entity>
+    </a-entity>
+  </a-scene>
+  <div id="controls" hidden>
+    <label for="level"><span>調整虛擬水位</span><span id="levelText">50%</span></label>
+    <input type="range" id="level" min="10" max="100" step="5" value="50">
+    <div class="levelButtons">
+      <button type="button" data-level="25">低水位 25%</button>
+      <button type="button" data-level="50" class="selected">中水位 50%</button>
+      <button type="button" data-level="90">高水位 90%</button>
+    </div>
+    <button id="markObservation" type="button" class="saveObserve">記錄目前觀察水位</button>
+    <p class="helper">水位變動不等於植物立刻生長或改變形狀。請觀察莖與葉相對於水面的不同位置。</p>
+  </div>
+</section>
+<section id="worksheet" aria-label="觀察學習單">
+<div class="sheet">
+  <div class="section">
+    <h1>🔎 水蘊草觀察學習單</h1>
+    <p><strong>任務：</strong>透過 AR 圖卡觀察水蘊草，調整水位，記錄莖與葉的位置，最後判斷它屬於哪一類水生植物。</p>
+    <ol>
+      <li>開啟 AR，掃描圖卡。</li>
+      <li>先調成低水位，記錄你的發現。</li>
+      <li>再調成高水位，比較莖和葉。</li>
+      <li>完成分類、解釋與反思，送出給老師。</li>
+    </ol>
+    <div class="saved" id="history">還沒有記錄觀察水位。</div>
+  </div>
+  <form id="learningForm">
+  <div class="section">
+    <h2>① 基本資料</h2>
+    <label class="field" for="room">班級 <span>*</span></label>
+    <input id="room" name="room" type="text" maxlength="50" placeholder="例：五年一班" required>
+    <label class="field" for="student">座號或小組編號 <span>*</span></label>
+    <input id="student" name="student" type="text" maxlength="50" placeholder="例：12 或 第3組" required>
+    <label class="field" for="nickname">暱稱（可不填）</label>
+    <input id="nickname" name="nickname" type="text" maxlength="50" placeholder="不需要填真實姓名">
+  </div>
+  <div class="section">
+    <h2>② 觀察：改變水位</h2>
+    <label class="field" for="low">低水位時，水蘊草的莖和葉在哪裡？<span>*</span></label>
+    <textarea id="low" required placeholder="例：水面在哪裡？莖和葉位於水面上或下？"></textarea>
+    <label class="field" for="high">高水位時，水蘊草的莖和葉在哪裡？<span>*</span></label>
+    <textarea id="high" required placeholder="比較水面升高後，哪些部位被水覆蓋？"></textarea>
+    <label class="field" for="stem">比較高、低水位，莖的位置與外形有什麼變化？<span>*</span></label>
+    <textarea id="stem" required placeholder="區分「相對水面的位置」與「真的長高了」。"></textarea>
+    <label class="field" for="leaf">比較高、低水位，葉片的位置與外形有什麼變化？<span>*</span></label>
+    <textarea id="leaf" required placeholder="觀察葉片的分布，以及葉片是否漂在水面。"></textarea>
+  </div>
+  <div class="section">
+    <h2>③ 探究：水蘊草的生長類型</h2>
+    <p>你認為水蘊草屬於哪一種水生植物？</p>
+    <div class="choices">
+      <label><input type="radio" name="type" value="挺水性" required> 挺水性</label>
+      <label><input type="radio" name="type" value="沉水性"> 沉水性</label>
+      <label><input type="radio" name="type" value="浮葉性"> 浮葉性</label>
+      <label><input type="radio" name="type" value="漂浮性"> 漂浮性</label>
+    </div>
+    <label class="field" for="reason">你為什麼這樣判斷？請用觀察證據回答。<span>*</span></label>
+    <textarea id="reason" required placeholder="例如：它的根、莖、葉大部分位於哪裡？"></textarea>
+  </div>
+  <div class="section">
+    <h2>④ 延伸思考</h2>
+    <label class="field" for="reflection">如果水位突然降低，水蘊草一定會立即改變莖長嗎？為什麼？<span>*</span></label>
+    <textarea id="reflection" required placeholder="用今天的觀察提出你的推測。"></textarea>
+    <button id="submitButton" class="submit" type="submit">送出學習單給老師</button>
+    <div id="result" aria-live="polite"></div>
+    <p class="helper">答案會傳送至老師的 Google 試算表。請勿輸入身分證、電話、住址等個人資訊。</p>
+  </div>
+  </form>
+</div>
+</section>
+</main>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const arTab = $('viewAR'), sheetTab = $('viewSheet'), panel = $('worksheet');
+let started = false, foundCount = 0, modelReady = false;
+let levels = [], modelWidth = 0.6, modelDepth = 0.4, modelHeight = 0.6;
+let currentID = '';
+
+function viewSheet(open) {
+  panel.classList.toggle('visible', open);
+  arTab.classList.toggle('active', !open);
+  sheetTab.classList.toggle('active', open);
+  if (!open) updateWater();
+}
+arTab.onclick = () => viewSheet(false);
+sheetTab.onclick = () => viewSheet(true);
+
+const scene = $('scene');
+const target = $('target');
+const plant = $('plantModel');
+const water = $('waterBox');
+function setStatus(s) { $('status').hidden = false; $('status').textContent = s; }
+
+plant.addEventListener('model-loaded', () => {
+  const obj = plant.getObject3D('mesh');
+  if (!obj) return;
+  if (SETTINGS.HIDE_EMBEDDED_WATER) {
+    obj.traverse(child => {
+      if (/^(water($|[_ .-])|水位|水面|水體|液面)/i.test(child.name)) child.visible = false;
+    });
+  }
+  obj.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(obj);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  if (!size.x || !size.y || !size.z) {
+    setStatus('模型尺寸異常，請檢查 plant.glb'); return;
+  }
+  const scale = Math.min(
+    SETTINGS.MAX_MODEL_WIDTH / size.x,
+    SETTINGS.MAX_MODEL_HEIGHT / size.y,
+    SETTINGS.MAX_MODEL_DEPTH / size.z
+  );
+  // 因為 GLB 局部座標的 Y 軸是「上」，把底部移到水箱底面。
+  plant.object3D.scale.setScalar(scale);
+  plant.object3D.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+  modelWidth = size.x * scale;
+  modelDepth = size.z * scale;
+  modelHeight = size.y * scale;
+  modelReady = true;
+  updateWater();
+  setStatus('模型已載入，請對準 AR 圖卡。');
+});
+plant.addEventListener('model-error', () => setStatus('無法載入 plant.glb；請檢查檔案名稱。'));
+
+target.addEventListener('targetFound', () => {
+  foundCount++;
+  setStatus('已辨識圖卡！請拖曳下方水位滑桿。');
+});
+target.addEventListener('targetLost', () => setStatus('圖卡離開鏡頭，請重新對準。'));
+
+function updateWater() {
+  const percent = Number($('level').value);
+  $('levelText').textContent = percent + '%';
+  document.querySelectorAll('[data-level]').forEach(b => {
+    b.classList.toggle('selected', Number(b.dataset.level) === percent);
+  });
+  const h = Math.max(0.012, modelHeight * SETTINGS.WATER_HEIGHT_RATIO * percent / 100);
+  water.setAttribute('height', h);
+  water.setAttribute('width', modelWidth * SETTINGS.WATER_WIDTH_RATIO);
+  water.setAttribute('depth', modelDepth * SETTINGS.WATER_DEPTH_RATIO);
+  water.setAttribute('position', {x:0, y:h/2, z:0});
+}
+$('level').addEventListener('input', updateWater);
+document.querySelectorAll('[data-level]').forEach(b => {
+  b.onclick = () => { $('level').value = b.dataset.level; updateWater(); };
+});
+$('markObservation').onclick = () => {
+  const n = Number($('level').value);
+  if (!levels.includes(n)) levels.push(n);
+  $('history').textContent = '已記錄的水位：' + levels.join('%、') + '%。請比較低水位和高水位的差異。';
+};
+
+$('startAR').onclick = async () => {
+  if (started) return;
+  $('startError').textContent = '';
+  $('startAR').disabled = true;
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw Error('此瀏覽器無法使用攝影機，請改用 Safari 或 Chrome。');
+    }
+    if (!scene.hasLoaded) await new Promise(resolve => scene.addEventListener('loaded', resolve, {once:true}));
+    const system = scene.systems['mindar-image-system'];
+    if (!system) throw Error('MindAR 未載入成功。');
+    await system.start();
+    started = true;
+    $('arPrompt').hidden = true;
+    $('controls').hidden = false;
+    updateWater();
+    setStatus(modelReady ? '請將相機對準印好的 AR 圖卡。' : '相機已啟動，正在讀取 3D 模型。');
+  } catch(err) {
+    $('startAR').disabled = false;
+    $('startError').textContent = '啟動失敗：' + (err.message || String(err));
+  }
+};
+
+function newID() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  const a = new Uint8Array(16); crypto.getRandomValues(a);
+  return Array.from(a, n => n.toString(16).padStart(2,'0')).join('');
+}
+function statusViaJSONP(id) {
+  return new Promise((resolve, reject) => {
+    const cb = 'arReceipt_' + Math.random().toString(36).slice(2);
+    const script = document.createElement('script');
+    let done = false;
+    const timer = setTimeout(() => finish(new Error('確認逾時')), 6500);
+    function finish(err, data) {
+      if (done) return;
+      done = true; clearTimeout(timer); script.remove(); delete window[cb];
+      err ? reject(err) : resolve(Boolean(data && data.saved));
+    }
+    window[cb] = data => finish(null, data);
+    script.onerror = () => finish(new Error('無法連線確認'));
+    script.src = GAS_URL + '?action=status&id=' + encodeURIComponent(id) + '&callback=' + cb + '&_=' + Date.now();
+    document.head.appendChild(script);
+  });
+}
+const pause = ms => new Promise(resolve => setTimeout(resolve,ms));
+const value = id => $(id).value.trim();
+$('learningForm').onsubmit = async event => {
+  event.preventDefault();
+  const button = $('submitButton'), result = $('result');
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(GAS_URL)) {
+    result.className='danger';result.textContent='老師尚未設定 GAS_URL，請先完成部署。';return;
+  }
+  if (!event.target.reportValidity()) return;
+  const type = document.querySelector('input[name=type]:checked')?.value;
+  if (!type) { result.textContent='請先選擇植物類型。'; return; }
+  if (!currentID) currentID = newID();
+  const data = {
+    id:currentID, room:value('room'),student:value('student'),nickname:value('nickname'),
+    low:value('low'),high:value('high'),stem:value('stem'),leaf:value('leaf'),type,
+    reason:value('reason'),reflection:value('reflection'),
+    levelHistory:levels.join(',') || String($('level').value), foundCount
+  };
+  button.disabled=true;result.className='';result.textContent='正在送出並確認試算表是否收到……';
+  try {
+    // text/plain 不觸發跨網域預檢；no-cors 回覆不可讀，所以再用 JSONP 查收件狀態。
+    await fetch(GAS_URL, {method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(data)});
+    let saved=false;
+    for(let attempt=0;attempt<7;attempt++) {
+      await pause(1400);
+      try { if(await statusViaJSONP(currentID)) {saved=true;break;} } catch(err) { /* 下一次重試 */ }
+    }
+    if (!saved) throw Error('尚未取得收件確認。請檢查網路或 GAS 部署，再按一次送出（相同編號不會重複入表）。');
+    result.className='ok';
+    result.textContent='✅ 提交成功！已確認 Google 試算表收到答案。提交編號：' + currentID;
+    button.textContent='已完成提交';
+    // 保留 disabled，避免已成功答案被覆蓋；重新整理可提交新學習單。
+  } catch (err) {
+    result.className='danger';result.textContent='⚠️ ' + err.message;
+    button.disabled=false;
+  }
+};
+updateWater();
+})();
+</script>
+</body>
+</html>
